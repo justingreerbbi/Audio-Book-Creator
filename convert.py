@@ -1,67 +1,48 @@
-import os, sys
 from pydub import AudioSegment
-from mutagen.mp3 import MP3
-from mutagen.mp4 import MP4
+from mutagen.mp4 import MP4, MP4Cover
+import os
 
-def convert_mp3_to_m4b(directory):
-    # Collect all MP3 files in the directory
-    mp3_files = sorted([os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.mp3')])
-    
-    if not mp3_files:
-        print("No MP3 files found in the directory.")
-        return
+def merge_mp3_files(mp3_files, output_file, cover_image, metadata):
+    # Create an empty AudioSegment
+    audiobook = AudioSegment.empty()
 
-    # Create an empty list to hold segments
-    segments = []
-
-    # Load each MP3 file and add to segments
+    # Merge all MP3 files
     for mp3_file in mp3_files:
-        audio = AudioSegment.from_file(mp3_file, format="mp3")
-        segments.append(audio)
-        print(f"Loaded {os.path.basename(mp3_file)}")
+        audio = AudioSegment.from_mp3(mp3_file)
+        audiobook += audio
 
-    # Concatenate all segments
-    combined_audio = sum(segments)
+    # Export the merged audio as M4B
+    audiobook.export(output_file, format="mp4", codec="aac")
 
-    # Export combined audio to M4B
-    output_file = os.path.join(directory, "audiobook.m4b")
-    combined_audio.export(output_file, format="mp4")
-    print(f"Combined MP3s into audiobook file: {output_file}")
-
-    # Add chapter information using Mutagen
+    # Add metadata and cover image
     audio = MP4(output_file)
+
+    # Add metadata
+    audio["\xa9nam"] = metadata['title']
+    audio["\xa9ART"] = metadata['author']
+    audio["\xa9alb"] = metadata['album']
+    audio["\xa9gen"] = metadata['genre']
+    audio["\xa9day"] = metadata['year']
+    audio["trkn"] = [(int(metadata['track']), 0)]
+
+    # Add cover image
+    with open(cover_image, 'rb') as img:
+        audio["covr"] = [MP4Cover(img.read(), imageformat=MP4Cover.FORMAT_JPEG)]
+
+    # Save the changes
     audio.save()
-    sys.exit(0)
-    
-    chapter_list = []
-    cumulative_duration = 0
-    for i, mp3_file in enumerate(mp3_files):
-        mp3 = MP3(mp3_file)
-        duration = mp3.info.length * 1000  # Convert to milliseconds for consistency
-        start_time = cumulative_duration
-        end_time = start_time + duration
-        chapter_name = f"Chapter {i + 1}"
-
-        chapter_list.append((start_time, end_time, chapter_name))
-
-        #audio.add_tags('moov.udta.chpl.Chapter', {
-        #    'start': start_time,
-        #    'title': chapter_name
-        #})
-
-        cumulative_duration += duration
-
-    audio['chpl'] = chapter_list
-    #audio['moov']['udta']['chpl'] = chapter_list  # 'chpl' is the key for chapters in Mutagen
-
-    sys.exit(0)
-
-    # Update the file with new chapter metadata
-    audio.save()
-
-    print("Chapters added to the audiobook.")
 
 if __name__ == "__main__":
-    # Change this to the directory where your MP3 files are located
-    directory = "."  # Current directory
-    convert_mp3_to_m4b(directory)
+    mp3_files = ["chapter1.mp3", "chapter2.mp3"]
+    output_file = "audiobook.m4b"
+    cover_image = "cover.jpg"
+    metadata = {
+        'title': 'My Audio Book',
+        'author': 'Author Name',
+        'album': 'Audio Book Album',
+        'genre': 'Audiobook',
+        'year': '2023',
+        'track': '1'
+    }
+
+    merge_mp3_files(mp3_files, output_file, cover_image, metadata)
